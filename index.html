@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="环海南岛自行车骑行 · 逆时针环线（西进东出）——9天797公里，一路椰风海韵。" />
+  <title>环海南岛骑行 · 逆时针环线</title>
+
+  <!-- Leaflet 1.9.x via jsDelivr CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== 顶部导航 ===== -->
+  <nav class="topnav" id="topnav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark">✦</span>
+        <span>环海南骑行</span>
+      </a>
+      <div class="nav-links">
+        <a href="#map">线路地图</a>
+        <a href="#itinerary">每日行程</a>
+        <a href="#weather">天气</a>
+        <a href="#scenic">沿途风景</a>
+        <a href="#gear">装备贴士</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===== Hero ===== -->
+  <header class="hero" id="top">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="wrap">
+      <p class="eyebrow">COASTAL ISLAND LOOP · 逆时针环线</p>
+      <h1 id="hero-title" class="hero-title"></h1>
+      <p class="hero-period" id="hero-period"></p>
+      <p class="hero-sub">西线进、东线出 · 主环线约 <b>800km</b>（含沿海景区支线全程约 <b>950–1000km</b>），用车轮丈量整座岛。</p>
+      <p class="route-line" id="hero-route"></p>
+
+      <div class="hero-stats" id="hero-stats"></div>
+      <div class="hero-chips" id="hero-chips"></div>
+    </div>
+  </header>
+
+  <!-- ===== 地图 ===== -->
+  <section class="section map-sec" id="map">
+    <div class="wrap section-head">
+      <p class="kicker">01</p>
+      <h2>线路地图 · 全程连续环线</h2>
+      <p class="lead">逆时针绕岛一周，串联海口 → 临高 → 儋州 → 东方 → 莺歌海 → 三亚 → 陵水 → 万宁 → 博鳌 → 文昌 → 海口（主环线约 800km；登临高角、洋浦盐田、鱼鳞洲、南山、石梅湾·日月湾、文昌龙楼等沿海支线后，全段约 950–1000km）。</p>
+    </div>
+    <div class="map-frame">
+      <div id="ride-map"></div>
+    </div>
+    <div id="map-legend" class="map-legend"></div>
+  </section>
+
+  <!-- ===== 每日行程 ===== -->
+  <section class="section" id="itinerary">
+    <div class="wrap section-head">
+      <p class="kicker">02</p>
+      <h2>每日行程</h2>
+      <p class="lead">每天一座城，不远不赶，留足体力看风景、吃海鲜。</p>
+    </div>
+    <div class="wrap">
+      <div class="timeline" id="itinerary-list"></div>
+    </div>
+  </section>
+
+  <!-- ===== 天气与季节 ===== -->
+  <section class="section section-alt" id="weather">
+    <div class="wrap section-head">
+      <p class="kicker">03</p>
+      <h2>天气与季节提示</h2>
+      <p class="lead">9月底–10月初仍是台风季与雨季的尾声，骑行前瞻天气，防晒防雨两手抓。</p>
+    </div>
+    <div class="wrap">
+      <div class="weather-grid" id="weather-grid"></div>
+    </div>
+  </section>
+
+  <!-- ===== 沿途风景 ===== -->
+  <section class="section" id="scenic">
+    <div class="wrap section-head">
+      <p class="kicker">04</p>
+      <h2>沿途风景</h2>
+      <p class="lead">骑楼、古盐田、椰林与礁石海岸——那些值得停下来的时刻。</p>
+    </div>
+    <div class="wrap">
+      <div class="scenic-grid" id="scenic-grid"></div>
+    </div>
+  </section>
+
+  <!-- ===== 装备贴士 ===== -->
+  <section class="section section-alt" id="gear">
+    <div class="wrap section-head">
+      <p class="kicker">05</p>
+      <h2>装备与贴士</h2>
+      <p class="lead">环岛强度不大，但防晒和饮水一个都不能少。</p>
+    </div>
+    <div class="wrap">
+      <div class="gear-grid" id="gear-list"></div>
+    </div>
+  </section>
+
+  <!-- ===== 页脚 ===== -->
+  <footer class="footer">
+    <div class="wrap">
+      <p class="footer-mark">✳ 环海南骑行 · 逆时针环线</p>
+      <p class="footer-note">数据基于行程计划整理 · 坐标 GCJ-02 · 已转换为 WGS-84 渲染</p>
+    </div>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
