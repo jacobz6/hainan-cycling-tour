@@ -1,73 +1,170 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""采集骑行路径 / 天气 / 景区 POI（经沙箱代理调用高德 API）。"""
-import json, os, subprocess, time, urllib.parse
+"""v2: 沿环岛旅游公路走廊，分段链式采集骑行路径（高德 v4 bicycling）。
 
-KEY = os.environ.get("AMAP_KEY", "")
-ROOT = "/workspace/hainan-cycling/data"
-os.makedirs(ROOT, exist_ok=True)
+依赖: data/geo_v2.json（fetch_amap.py 产物）
+输出: data/routes_v2.json —— 按日分组，每段含 distance/duration/polyline
+用法: python3 fetch_routes.py
+"""
+import json
+import os
+import subprocess
+import time
+import urllib.parse
 
-def curl_get(path_v3, params):
-    q = f"key={KEY}&source=ts_mcp&" + urllib.parse.urlencode(params)
-    time.sleep(0.25)
-    p = subprocess.run(["curl","-s","-m","40",f"https://restapi.amap.com/v3/{path_v3}?{q}"],
-                       capture_output=True, text=True)
-    try: return json.loads(p.stdout)
-    except Exception: return {"_raw": p.stdout[:300]}
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(HERE, "data")
 
-def curl_bike(params):
-    q = f"key={KEY}&" + urllib.parse.urlencode(params)
-    time.sleep(0.25)
-    p = subprocess.run(["curl","-s","-m","40",f"https://restapi.amap.com/v4/direction/bicycling?{q}"],
-                       capture_output=True, text=True)
-    try: return json.loads(p.stdout)
-    except Exception: return {"_raw": p.stdout[:300]}
 
-# 路由分段：逆时针，西进东出（海口→临高→儋州→东方→莺歌海→三亚→陵水→万宁→博鳌→文昌→海口站）
-segments = [
-    ("海口市区","110.200162,20.046316","临高县城","109.690508,19.912025"),
-    ("临高县城","109.690508,19.912025","儋州市区","109.580812,19.520948"),
-    ("儋州市区","109.580812,19.520948","东方市区","108.651829,19.095187"),
-    ("东方市区","108.651829,19.095187","莺歌海镇","108.697398,18.510523"),
-    ("莺歌海镇","108.697398,18.510523","三亚市区","109.511709,18.252865"),
-    ("三亚市区","109.511709,18.252865","陵水县城","110.037553,18.506045"),
-    ("陵水县城","110.037553,18.506045","万宁兴隆","110.392605,18.793697"),
-    ("万宁兴隆","110.392605,18.793697","博鳌镇","110.576587,19.159413"),
-    ("博鳌镇","110.576587,19.159413","文昌市区","110.797473,19.544234"),
-    ("文昌市区","110.797473,19.544234","海口火车站","110.162116,20.027324"),
+def load_key():
+    key = os.environ.get("AMAP_KEY", "")
+    if key:
+        return key
+    env_path = os.path.join(HERE, ".env")
+    if os.path.exists(env_path):
+        for line in open(env_path, encoding="utf-8"):
+            line = line.strip()
+            if line.startswith("AMAP_KEY="):
+                return line.split("=", 1)[1].strip()
+    raise SystemExit("缺少 AMAP_KEY：请设置环境变量或在 .env 中配置")
+
+
+# 日程链（逆时针·西进东出；D6 为三亚休整日）
+# 注1: 海文大桥禁行非机动车，收官段绕铺前湾(罗豆/三江)→演丰→东寨港→江东大道→新埠岛
+# 注2: D10 必须抵达演丰（距还车点仅 29.5km），保证 D11 10:30 前还车硬时限可达成
+DAYS = [
+    ("D1",  "9.26 六", ["start", "yingbin", "laocheng", "qiaotou", "linggaojiao", "lincheng"]),
+    ("D2",  "9.27 日", ["lincheng", "xinying", "eman", "yantian", "baimajing"]),
+    ("D3",  "9.28 一", ["baimajing", "haitou", "haiwei", "qiziwan", "basuo"]),
+    ("D4",  "9.29 二", ["basuo", "yulinzhou", "ganen", "banqiao", "yingehai"]),
+    ("D5",  "9.30 三", ["yingehai", "yazhou", "nanshan", "tianya", "sanyawan"]),
+    ("D6",  "10.1 四", None),   # 三亚休整
+    ("D7",  "10.2 五", ["sanyawan", "haitang", "lushui", "riyuewan"]),
+    ("D8",  "10.3 六", ["riyuewan", "shimeiwan", "shenzhou", "boao"]),
+    ("D9",  "10.4 日", ["boao", "tanmen", "huiwen", "wencheng", "qinglan", "dongjiao", "longlou"]),
+    ("D10", "10.5 一", ["longlou", "puqian", "yanfeng"]),
+    ("D11", "10.6 二", ["yanfeng", "return517"]),
 ]
 
-routes = []
-for name_o, lnglat_o, name_d, lnglat_d in segments:
-    r = curl_bike({"origin":lnglat_o, "destination":lnglat_d})
-    pts = []
-    dist = dur = None
-    paths = ((r.get("data") or {}).get("paths") or [])
-    if paths:
-        p0 = paths[0]
-        dist = p0.get("distance"); dur = p0.get("duration")
-        for step in p0.get("steps") or []:
-            pl = step.get("polyline") or ""
-            for chunk in pl.split(";"):
-                if chunk:
-                    lng,lat = chunk.split(",")
-                    pts.append([float(lng), float(lat)])
-    routes.append({"from":name_o,"to":name_d,
-                   "distance_km": (int(dist)/1000) if dist else None,
-                   "duration_min": (int(dur)/60) if dur else None,
-                   "points": pts})
-    print(f"ROUTE {name_o}->{name_d}: {dist} m, {dur} s, pts={len(pts)}")
-with open(os.path.join(ROOT,"routes.json"),"w",encoding="utf-8") as f:
-    json.dump(routes,f,ensure_ascii=False,indent=2)
+# 额外备选段（Plan B / 赶路用，不属主日程）
+EXTRAS = [
+    ("pb_d10_direct", ["qinglan", "yanfeng"]),     # D9 落后至清澜: 跳过东郊椰林+铜鼓岭直奔演丰(~115km)
+    ("pb_d11_direct", ["puqian", "return517"]),    # D10 落后至铺前: 应急直奔还车点(~70km, 需05:45出发)
+]
 
-# 天气（当前）
-weather = {}
-for name, code in [("海口","460100"),("儋州","460400"),("东方","469007"),
-                   ("乐东","469027"),("三亚","460200"),("陵水","469028"),
-                   ("万宁","469006"),("琼海","469002"),("文昌","469005")]:
-    r = curl_get("weather/weatherInfo", {"city":code})
-    info = (r.get("lives") or [{}])[0]
-    weather[name] = info
-    print("WEATHER", name, info.get("weather"), info.get("temperature"))
-with open(os.path.join(ROOT,"weather.json"),"w",encoding="utf-8") as f:
-    json.dump(weather,f,ensure_ascii=False,indent=2)
+
+def curl_bike(params, key, retries=2):
+    q = f"key={key}&" + urllib.parse.urlencode(params)
+    for i in range(retries + 1):
+        p = subprocess.run(
+            ["curl", "-s", "-m", "40", f"https://restapi.amap.com/v4/direction/bicycling?{q}"],
+            capture_output=True, text=True,
+        )
+        try:
+            r = json.loads(p.stdout)
+            paths = ((r.get("data") or {}).get("paths")) or []
+            if paths:
+                return paths[0]
+        except Exception:
+            pass
+        time.sleep(1.2)
+    return None
+
+
+def seg_points(path):
+    pts = []
+    for step in path.get("steps") or []:
+        pl = step.get("polyline") or ""
+        for chunk in pl.split(";"):
+            if chunk:
+                lng, lat = chunk.split(",")
+                pts.append([round(float(lng), 6), round(float(lat), 6)])
+    return pts
+
+
+def main():
+    key = load_key()
+    with open(os.path.join(ROOT, "geo_v2.json"), encoding="utf-8") as f:
+        geo = json.load(f)
+
+    def loc(pid):
+        return geo[pid]["location"]
+
+    def name(pid):
+        return geo[pid]["name"]
+
+    out_days = []
+    total_m = 0
+    problems = []
+    for day, date, chain in DAYS:
+        if chain is None:
+            out_days.append({"day": day, "date": date, "type": "rest",
+                             "segments": [], "distance_km": 0})
+            print(f"{day} {date} 休整日")
+            continue
+        segments = []
+        day_m = 0
+        day_pts = []
+        for a, b in zip(chain[:-1], chain[1:]):
+            path = curl_bike({"origin": loc(a), "destination": loc(b)}, key)
+            if not path:
+                problems.append(f"{day}: {a}->{b} 采集失败")
+                continue
+            dist = int(path.get("distance") or 0)
+            dur = int(path.get("duration") or 0)
+            pts = seg_points(path)
+            if not pts:
+                problems.append(f"{day}: {a}->{b} 无轨迹")
+                continue
+            if day_pts and day_pts[-1] == pts[0]:
+                pts = pts[1:]
+            day_pts.extend(pts)
+            day_m += dist
+            segments.append({
+                "from": a, "to": b, "from_name": name(a), "to_name": name(b),
+                "distance_km": round(dist / 1000, 2),
+                "duration_min": round(dur / 60, 1),
+                "points": pts,
+            })
+            print(f"  {day} {a}->{b}: {dist/1000:.1f}km")
+            time.sleep(0.22)
+        total_m += day_m
+        out_days.append({
+            "day": day, "date": date, "type": "ride",
+            "from": chain[0], "to": chain[-1],
+            "overnight": name(chain[-1]),
+            "distance_km": round(day_m / 1000, 2),
+            "segments": segments, "points": day_pts,
+        })
+        print(f"{day} {date} {name(chain[0])} -> {name(chain[-1])}: {day_m/1000:.1f}km, pts={len(day_pts)}")
+
+    # 备选段
+    extras = {}
+    for tag, chain in EXTRAS:
+        path = curl_bike({"origin": loc(chain[0]), "destination": loc(chain[-1])}, key)
+        if path:
+            extras[tag] = {
+                "from": chain[0], "to": chain[-1],
+                "from_name": name(chain[0]), "to_name": name(chain[-1]),
+                "distance_km": round(int(path.get("distance") or 0) / 1000, 2),
+                "points": seg_points(path),
+            }
+            print(f"EXTRA {tag}: {extras[tag]['distance_km']}km")
+        else:
+            problems.append(f"extra {tag} 采集失败")
+        time.sleep(0.22)
+
+    with open(os.path.join(ROOT, "routes_v2.json"), "w", encoding="utf-8") as f:
+        json.dump({"days": out_days, "extras": extras}, f, ensure_ascii=False)
+
+    print(f"\nTOTAL: {total_m/1000:.1f}km")
+    rides = [d["distance_km"] for d in out_days if d["type"] == "ride"]
+    print("逐日:", rides)
+    bad = [d["day"] for d in out_days if d["type"] == "ride" and not (25 <= d["distance_km"] <= 125)]
+    if bad:
+        problems.append(f"单日里程超出 25-125km 区间: {bad}")
+    print("PROBLEMS:", problems or "无")
+
+
+if __name__ == "__main__":
+    main()
