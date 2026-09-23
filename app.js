@@ -255,7 +255,35 @@
     }
   }
 
+  /* 坐标顺序：数据文件按 GeoJSON / 高德惯例存 [lng, lat]，而 Leaflet 一律要求 [lat, lng]。
+     不转换会被 Leaflet 当成 lat=110 之类的非法纬度，投影时钳制到 85.051 → 整幅图塌成一条水平线。
+     这里在交给 Leaflet 之前统一转换一次（原地改 ROUTES，保证后续读取点一致）。 */
+  function toLL(p) { return [p[1], p[0]]; }
+  function toLLs(arr) {
+    var out = [];
+    for (var i = 0; i < arr.length; i++) out.push(toLL(arr[i]));
+    return out;
+  }
+  function toLLDeep(a) {            // Polygon / MultiPolygon 递归
+    if (!a || !a.length) return a;
+    if (typeof a[0][0] === 'number') return toLLs(a);
+    var o = [];
+    for (var j = 0; j < a.length; j++) o.push(toLLDeep(a[j]));
+    return o;
+  }
+
   function initMap() {
+    // [lng,lat] → [lat,lng]
+    for (var n = 0; n < ROUTES.days.length; n++) {
+      var dn = ROUTES.days[n];
+      if (dn.points && dn.points.length) dn.points = toLLs(dn.points);
+    }
+    for (var ek in ROUTES.extras) {
+      var ev = ROUTES.extras[ek];
+      if (ev && ev.points && ev.points.length) ev.points = toLLs(ev.points);
+    }
+    var coastLL = toLLDeep(COAST.coordinates);
+
     map = L.map('map', { attributionControl: true });
     // 用纯文本替换默认 attribution 前缀（默认值带官网外链，离线页面不需要）
     if (map.attributionControl && map.attributionControl.setPrefix) {
@@ -270,7 +298,7 @@
     }).addTo(map);
 
     // 海南主岛海岸线（离线常显）
-    L.polygon(COAST.coordinates, {
+    L.polygon(coastLL, {
       color: '#0e7490', weight: 1.2, opacity: 0.55,
       fillColor: '#0891b2', fillOpacity: 0.07,
       interactive: false
@@ -339,7 +367,7 @@
 
     // 机场 ✈️（浏览器/公开数据为 WGS-84，转换到 GCJ-02 后打点）
     var airport = wgs84ToGcj02(110.4517, 19.9350);
-    L.marker(airport, { icon: emojiIcon('✈️', 'mk-airport') }).addTo(map)
+    L.marker(toLL(airport), { icon: emojiIcon('✈️', 'mk-airport') }).addTo(map)
       .bindPopup('<b>美兰机场</b><br>10.6 17:40 起飞 · 16:40 前值机<br>还车点打车约 25km / 30 分钟');
 
     // 备选线（默认隐藏，图例区复选框切换；灰色虚线）
@@ -366,7 +394,7 @@
       if (!navigator.geolocation) { toast('此浏览器不支持定位'); return; }
       toast('定位中…');
       navigator.geolocation.getCurrentPosition(function (pos) {
-        var c = wgs84ToGcj02(pos.coords.longitude, pos.coords.latitude);
+        var c = toLL(wgs84ToGcj02(pos.coords.longitude, pos.coords.latitude));
         if (locMarker) {
           locMarker.setLatLng(c);
         } else {
